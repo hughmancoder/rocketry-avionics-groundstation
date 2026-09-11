@@ -38,10 +38,14 @@ export default function SettingsPage({
   const [selectedPort, setSelectedPort] = useState<SerialPort | null>(null);
   const [rawData, setRawData] = useState<string>("");
   const [dataSource, setDataSource] = useState<DataSource>("srad");
+  const [transport, setTransport] = useState<"serial" | "websocket">("serial");
+  const [websocketUrl, setWebsocketUrl] = useState("ws://localhost:8765");
   const [launchLongitude, setLaunchLongitude] = useState(String(launchSite[0]));
   const [launchLatitude, setLaunchLatitude] = useState(String(launchSite[1]));
   const [launchSiteMessage, setLaunchSiteMessage] = useState("");
   const readerRef = useRef<ReadableStreamDefaultReader | null>(null); 
+  const websocketRef = useRef<WebSocket | null>(null);
+  const websocketBufferRef = useRef("");
   const streamStartTimeRef = useRef<number>(0);
 
   // MOCK data
@@ -132,8 +136,68 @@ export default function SettingsPage({
     }
   }, [dataSource, selectedPort, setPortStatus, setTelemetryData]);
 
+  const connectWebSocket = useCallback(() => {
+    if (websocketRef.current) return;
+
+    try {
+      const socket = new WebSocket(websocketUrl);
+      websocketRef.current = socket;
+      websocketBufferRef.current = "";
+      streamStartTimeRef.current = Date.now();
+
+      socket.onopen = () => {
+        setPortStatus(STATUS.CONNECTED);
+      };
+
+      socket.onmessage = (event) => {
+        const text = typeof event.data === "string" ? event.data : "";
+        if (!text) return;
+
+        setRawData((previous) => previous + text);
+        websocketBufferRef.current += text;
+        const lines = websocketBufferRef.current.split(/\r?\n/);
+        websocketBufferRef.current = lines.pop() || "";
+
+        for (const line of lines) {
+          const packet = dataSource === "srad"
+            ? parseSradTelemetry(line)
+            : parseCotsGpsTelemetry(
+                line,
+                Date.now() - streamStartTimeRef.current,
+              );
+
+          if (packet) {
+            setTelemetryData((previous) => [...previous, packet]);
+          }
+        }
+      };
+
+      socket.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        setPortStatus(STATUS.DISCONNECTED);
+      };
+
+      socket.onclose = () => {
+        websocketRef.current = null;
+        websocketBufferRef.current = "";
+        setPortStatus(STATUS.DISCONNECTED);
+      };
+    } catch (error) {
+      console.error("Failed to connect to WebSocket:", error);
+      websocketRef.current = null;
+      setPortStatus(STATUS.DISCONNECTED);
+    }
+  }, [dataSource, setPortStatus, setTelemetryData, websocketUrl]);
+
   // Closes the port
   const disconnectPort = useCallback(async () => {
+    if (transport === "websocket") {
+      websocketRef.current?.close();
+      websocketRef.current = null;
+      setPortStatus(STATUS.DISCONNECTED);
+      return;
+    }
+
     if (!selectedPort) return;
     try {
       if (readerRef.current) {
@@ -147,7 +211,7 @@ export default function SettingsPage({
       console.error("Error closing port:", err);
       setPortStatus(STATUS.DISCONNECTED);
     }
-  }, [selectedPort, setPortStatus]);
+  }, [selectedPort, setPortStatus, transport]);
 
   const applyLaunchSite = () => {
     const longitude = Number(launchLongitude);
@@ -167,6 +231,37 @@ export default function SettingsPage({
 
     setLaunchSite([longitude, latitude]);
     setLaunchSiteMessage("Launch site updated.");
+  };
+
+  const exportTelemetryCsv = () => {
+    const columns: (keyof Telemetry)[] = [
+      "time",
+      "Temp",
+      "pressure",
+      "altitude",
+      "accX",
+      "accY",
+      "accZ",
+      "angVelX",
+      "angVelY",
+      "angVelZ",
+      "lat",
+      "lon",
+    ];
+    const csv = [
+      columns.join(","),
+      ...telemetryData.map((packet) =>
+        columns.map((column) => packet[column]).join(",")
+      ),
+    ].join("\n");
+    const filename = `telemetry-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   useEffect(() => {
@@ -214,6 +309,43 @@ export default function SettingsPage({
         </Button>
         {launchSiteMessage && (
           <p className="mt-2 text-sm text-slate-300">{launchSiteMessage}</p>
+        )}
+      </div>
+
+      <div className="mb-4">
+        <p className="mb-2 font-semibold text-white">Connection type</p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            onClick={() => setTransport("serial")}
+            disabled={isConnected}
+            className={transport === "serial"
+              ? "bg-yellow-500 text-white hover:bg-yellow-600"
+              : "bg-gray-700 text-white hover:bg-gray-800"}
+          >
+            Serial
+          </Button>
+          <Button
+            type="button"
+            onClick={() => setTransport("websocket")}
+            disabled={isConnected}
+            className={transport === "websocket"
+              ? "bg-yellow-500 text-white hover:bg-yellow-600"
+              : "bg-gray-700 text-white hover:bg-gray-800"}
+          >
+            WebSocket
+          </Button>
+        </div>
+        {transport === "websocket" && (
+          <input
+            type="text"
+            value={websocketUrl}
+            onChange={(event) => setWebsocketUrl(event.target.value)}
+            disabled={isConnected}
+            aria-label="WebSocket URL"
+            className="mt-2 w-full rounded border border-slate-400 px-3 py-2 text-black"
+            placeholder="ws://localhost:8765"
+          />
         )}
       </div>
 
@@ -286,11 +418,22 @@ export default function SettingsPage({
           Clear ports
         </Button>
         <Button
+          onClick={exportTelemetryCsv}
+          disabled={telemetryData.length === 0}
+          className="bg-blue-700 hover:bg-blue-800 w-full sm:w-auto"
+        >
+          Export CSV
+        </Button>
+        <Button
           // onClick={isConnected ? disconnectPort : startMockTelemetry} // NOTE: for mock data
-          onClick={isConnected ? disconnectPort : connectPort} 
-          disabled={!selectedPort}
+          onClick={isConnected
+            ? disconnectPort
+            : transport === "websocket"
+              ? connectWebSocket
+              : connectPort}
+          disabled={transport === "serial" && !selectedPort}
           className={`text-white w-full sm:w-auto ${
-            selectedPort
+            transport === "websocket" || selectedPort
               ? "bg-yellow-500 hover:bg-yellow-600"
               : "bg-gray-400 cursor-not-allowed"
           }`}
@@ -301,7 +444,6 @@ export default function SettingsPage({
 
       <div className="mt-16">
       <p>Port Status: {portStatus}</p>
-
 
         <p>Raw Serial Data:</p>
         <pre className="mt-2 p-2 bg-gray-100 text-sm overflow-auto h-40 text-blue-900">
