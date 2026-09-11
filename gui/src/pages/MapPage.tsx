@@ -7,6 +7,12 @@ import { Telemetry } from "@/types";
 const LAUNCH_SITE: [number, number] = [143.189907, -30.671004];
 const MAX_MAP_POINTS = 1000;
 const MAP_BASE_URL = `${import.meta.env.BASE_URL}maps`;
+const MAP_BOUNDS: [number, number, number, number] = [
+  143.146306,
+  -30.714806,
+  143.246306,
+  -30.614806,
+];
 
 const offlineStyle: maplibregl.StyleSpecification = {
   version: 8,
@@ -15,14 +21,8 @@ const offlineStyle: maplibregl.StyleSpecification = {
       type: "raster",
       tiles: [`${MAP_BASE_URL}/tiles/{z}/{x}/{y}.jpg`],
       tileSize: 256,
+      bounds: MAP_BOUNDS,
       attribution: "Satellite imagery: local launch-site dataset",
-    },
-    terrainSource: {
-      type: "raster-dem",
-      tiles: [`${MAP_BASE_URL}/terrain/{z}/{x}/{y}.png`],
-      tileSize: 256,
-      encoding: "terrarium",
-      maxzoom: 13, // matches TERRAIN_MAX_ZOOM from the downloader
     },
   },
   layers: [
@@ -33,10 +33,6 @@ const offlineStyle: maplibregl.StyleSpecification = {
       paint: { "raster-opacity": 1 },
     },
   ],
-  terrain: {
-    source: "terrainSource",
-    exaggeration: 1.2,
-  },
 };
 
 function isValidPoint(point: Telemetry) {
@@ -150,10 +146,19 @@ export default function MapPage({ data }: { data: Telemetry[] }) {
       pitch: 55,
       bearing: -20,
       maxPitch: 75,
+      maxBounds: MAP_BOUNDS,
     });
     instance.addControl(new maplibregl.NavigationControl(), "top-right");
-    instance.on("error", () => setHasMapTiles(false));
-    instance.once("load", () => setMap(instance));
+    console.info("[Map] satellite tiles:", `${MAP_BASE_URL}/tiles/{z}/{x}/{y}.jpg`);
+    instance.on("error", (event) => {
+      console.error("[MapLibre] map error event:", event);
+      console.error("[MapLibre] underlying error:", event.error ?? event);
+      setHasMapTiles(false);
+    });
+    instance.once("load", () => {
+      console.info("[Map] style loaded successfully");
+      setMap(instance);
+    });
     mapRef.current = instance;
 
     return () => {
@@ -180,7 +185,9 @@ export default function MapPage({ data }: { data: Telemetry[] }) {
 
   return (
     <main className="relative h-full min-h-[34rem] overflow-hidden rounded-lg bg-slate-950">
-      <div ref={mapContainerRef} className="absolute inset-0" />
+      <div className="absolute inset-0">
+        <div ref={mapContainerRef} className="h-full w-full" />
+      </div>
       {map && <FlightPathOverlay map={map} points={mapPoints} />}
 
       <div className="pointer-events-none absolute left-4 top-4 z-20 max-w-xs rounded bg-slate-950/85 px-4 py-3 text-white shadow-lg">

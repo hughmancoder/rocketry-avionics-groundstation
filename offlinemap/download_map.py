@@ -1,5 +1,6 @@
 import math
 import os
+import shutil
 import time
 import requests
 
@@ -28,8 +29,8 @@ MAX_ZOOM = 16
 TERRAIN_MIN_ZOOM = 10
 TERRAIN_MAX_ZOOM = 13
 
-IMAGERY_OUTPUT_DIR = "./maps/tiles"
-TERRAIN_OUTPUT_DIR = "./maps/terrain"
+IMAGERY_OUTPUT_DIR = "../../gui/public/maps/tiles"
+TERRAIN_OUTPUT_DIR = "../../gui/public/maps/terrain"
 
 # Tile provider URL templates.
 # Imagery: Esri's endpoint is {z}/{y}/{x}, saved locally as {z}/{x}/{y}.jpg for MapLibre.
@@ -144,7 +145,22 @@ def download_terrain_tiles():
         label="terrain",
     )
 
+def check_directories():
+    """Ensures that the output directories for imagery and terrain tiles exist. Delete them if they already exist."""
+    if os.path.exists(IMAGERY_OUTPUT_DIR) or os.path.exists(TERRAIN_OUTPUT_DIR):
+        print("Are you sure you want to delete existing directories?   This will remove all existing tiles.")
+        input("Press Enter to continue or Ctrl+C to abort...")
+    if os.path.exists(IMAGERY_OUTPUT_DIR):
+        shutil.rmtree(IMAGERY_OUTPUT_DIR)
+    if os.path.exists(TERRAIN_OUTPUT_DIR):
+        shutil.rmtree(TERRAIN_OUTPUT_DIR)
+    os.makedirs(IMAGERY_OUTPUT_DIR, exist_ok=True)
+    os.makedirs(TERRAIN_OUTPUT_DIR, exist_ok=True)
+    print(f"Checked directories. Imagery: {IMAGERY_OUTPUT_DIR}, Terrain: {TERRAIN_OUTPUT_DIR}")
+
+
 
 if __name__ == "__main__":
+    check_directories()
     download_tiles()
     download_terrain_tiles()
