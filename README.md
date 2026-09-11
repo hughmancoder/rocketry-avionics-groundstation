@@ -26,6 +26,7 @@ struct TelemetryPacket {
   float pressure;                  // 4 bytes
   float accX, accY, accZ;          // 12 bytes
   float angVelX, angVelY, angVelZ; // 12 bytes
+  float lat, log 
 } __attribute__((packed));         // Ensure no padding in the structure
 ```
 

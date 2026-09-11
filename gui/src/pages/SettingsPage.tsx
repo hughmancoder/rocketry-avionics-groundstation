@@ -100,20 +100,19 @@ export default function SettingsPage({
         // Parse each complete line (comma-separated fields)
         for (const line of lines) {
           const parts = line.trim().split(",");
-          if (parts.length < 11) continue; // skip incomplete
+          if (parts.length < 10) continue; // skip incomplete
 
           const packet: Telemetry = {
             time: Number(parts[0]),
-            bmpTemp: Number(parts[1]),
-            imuTemp: Number(parts[2]),
-            pressure: Number(parts[3]),
-            altitude: Number(parts[4]),
-            accX: Number(parts[5]),
-            accY: Number(parts[6]),
-            accZ: Number(parts[7]),
-            angVelX: Number(parts[8]),
-            angVelY: Number(parts[9]),
-            angVelZ: Number(parts[10]),
+            Temp: Number(parts[1]),
+            pressure: Number(parts[2]),
+            altitude: Number(parts[3]),
+            accX: Number(parts[4]),
+            accY: Number(parts[5]),
+            accZ: Number(parts[6]),
+            angVelX: Number(parts[7]),
+            angVelY: Number(parts[8]),
+            angVelZ: Number(parts[9]),
           };
           // Push the new packet into parent state
           setTelemetryData((prev) => [...prev, packet]);

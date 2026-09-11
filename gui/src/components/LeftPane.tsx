@@ -33,9 +33,10 @@ const LeftPane = ({ data, serial_status, telemetry_status } : Props) => {
   ];
 
   const metrics: TMetric[] = [
-    { title: "BMP Temperature", value: data.bmpTemp.toFixed(2), unit: "°C" },
-    { title: "IMU Temperature", value: data.imuTemp.toFixed(2), unit: "°C" },
+    { title: "Temperature", value: data.Temp.toFixed(2), unit: "°C" },
     { title: "Pressure", value: data.pressure.toFixed(2), unit: "hPa" },
+    { title: "Latitude", value: data.lat.toFixed(6), unit: "°" },
+    { title: "Longitude", value: data.lon.toFixed(6), unit: "°" },
   ];
 
   return (
