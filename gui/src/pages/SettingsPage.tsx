@@ -113,6 +113,8 @@ export default function SettingsPage({
             angVelX: Number(parts[7]),
             angVelY: Number(parts[8]),
             angVelZ: Number(parts[9]),
+            lat: Number(parts[10]),
+            lon: Number(parts[11])
           };
           // Push the new packet into parent state
           setTelemetryData((prev) => [...prev, packet]);
