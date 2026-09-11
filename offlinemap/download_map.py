@@ -3,25 +3,24 @@ import os
 import shutil
 import time
 import requests
+from pathlib import Path
 
 # --- Configuration ---
-# Target coordinates (Launch site: 30°39'53.3"S, 143°11'46.7"E)
-LAT = -30.664806
-LON = 143.196306
+# These values are filled by the CLI before downloading.
+LAT = 0.0
+LON = 0.0
+RADIUS_KM = 0.0
+MIN_LAT = 0.0
+MAX_LAT = 0.0
+MIN_LON = 0.0
+MAX_LON = 0.0
 
-# Rough bounding box offset in degrees (0.05 deg is roughly ~5-6 km radius)
-LAT_DELTA = 0.05
-LON_DELTA = 0.05
-
-MIN_LAT = LAT - LAT_DELTA
-MAX_LAT = LAT + LAT_DELTA
-MIN_LON = LON - LON_DELTA
-MAX_LON = LON + LON_DELTA
+METERS_PER_DEGREE = 111111.0
 
 # Zoom levels:
 # 10 = regional view, 15 = high detail, 16 = very high detail
 MIN_ZOOM = 10
-MAX_ZOOM = 16
+MAX_ZOOM = 15
 
 # Terrain (elevation) tiles are much coarser than imagery. AWS Terrarium tiles
 # top out at zoom 15 globally, but for most terrain-mesh purposes zoom 12-13
@@ -29,8 +28,9 @@ MAX_ZOOM = 16
 TERRAIN_MIN_ZOOM = 10
 TERRAIN_MAX_ZOOM = 13
 
-IMAGERY_OUTPUT_DIR = "../../gui/public/maps/tiles"
-TERRAIN_OUTPUT_DIR = "../../gui/public/maps/terrain"
+REPOSITORY_DIR = Path(__file__).resolve().parent.parent
+IMAGERY_OUTPUT_DIR = str(REPOSITORY_DIR / "gui" / "public" / "maps" / "tiles")
+TERRAIN_OUTPUT_DIR = str(REPOSITORY_DIR / "gui" / "public" / "maps" / "terrain")
 
 # Tile provider URL templates.
 # Imagery: Esri's endpoint is {z}/{y}/{x}, saved locally as {z}/{x}/{y}.jpg for MapLibre.
@@ -44,6 +44,49 @@ TERRAIN_TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
+
+
+def read_float(prompt, minimum, maximum):
+    """Read and validate a numeric CLI value."""
+    while True:
+        try:
+            value = float(input(prompt).strip())
+        except ValueError:
+            print("Please enter a number.")
+            continue
+
+        if minimum <= value <= maximum:
+            return value
+
+        print(f"Please enter a value between {minimum} and {maximum}.")
+
+
+def configure_area():
+    """Ask for the map center and radius, then calculate the download bounds."""
+    global LAT, LON, RADIUS_KM, MIN_LAT, MAX_LAT, MIN_LON, MAX_LON
+
+    print("Offline map downloader")
+    print("Zoom levels are fixed in this script.")
+    LAT = read_float("Center latitude (-90 to 90): ", -90.0, 90.0)
+    LON = read_float("Center longitude (-180 to 180): ", -180.0, 180.0)
+    RADIUS_KM = read_float("Radius in kilometres (> 0): ", 0.001, 1000.0)
+
+    radius_meters = RADIUS_KM * 1000.0
+    latitude_delta = radius_meters / METERS_PER_DEGREE
+    longitude_scale = abs(math.cos(math.radians(LAT)))
+    longitude_delta = radius_meters / (METERS_PER_DEGREE * longitude_scale)
+
+    MIN_LAT = max(-90.0, LAT - latitude_delta)
+    MAX_LAT = min(90.0, LAT + latitude_delta)
+    MIN_LON = max(-180.0, LON - longitude_delta)
+    MAX_LON = min(180.0, LON + longitude_delta)
+
+    print(f"\nCenter: {LAT:.6f}, {LON:.6f}")
+    print(f"Radius: {RADIUS_KM:.2f} km")
+    print(
+        f"Bounds: lat {MIN_LAT:.6f} to {MAX_LAT:.6f}, "
+        f"lon {MIN_LON:.6f} to {MAX_LON:.6f}\n"
+    )
 
 
 def deg2num(lat_deg, lon_deg, zoom):
@@ -65,6 +108,20 @@ def _tile_bounds(min_lat, min_lon, max_lat, max_lon, zoom):
     return x_min, x_max, y_min, y_max
 
 
+def _print_progress(label, zoom, completed, total):
+    """Render a compact in-place progress bar for one zoom level."""
+    width = 30
+    progress = completed / total if total else 1.0
+    filled = int(width * progress)
+    bar = "=" * filled + "-" * (width - filled)
+    print(
+        f"\r[{label}] Zoom {zoom}: [{bar}] {completed}/{total} "
+        f"({progress * 100:5.1f}%)",
+        end="",
+        flush=True,
+    )
+
+
 def _download_tile_grid(session, url_template, output_dir, min_zoom, max_zoom,
                          file_ext, label):
     """Generic slippy-map tile grid downloader, saved as {z}/{x}/{y}.{ext}."""
@@ -78,6 +135,8 @@ def _download_tile_grid(session, url_template, output_dir, min_zoom, max_zoom,
         print(
             f"[{label}] Zoom {z}: downloading {x_count}x{y_count} = {x_count * y_count} tiles..."
         )
+        total_tiles = x_count * y_count
+        completed_tiles = 0
 
         for x in range(x_min, x_max + 1):
             dir_path = os.path.join(output_dir, str(z), str(x))
@@ -88,6 +147,8 @@ def _download_tile_grid(session, url_template, output_dir, min_zoom, max_zoom,
 
                 # Skip if already downloaded
                 if os.path.exists(file_path):
+                    completed_tiles += 1
+                    _print_progress(label, z, completed_tiles, total_tiles)
                     continue
 
                 url = url_template.format(z=z, y=y, x=x)
@@ -105,6 +166,11 @@ def _download_tile_grid(session, url_template, output_dir, min_zoom, max_zoom,
 
                 # Gentle delay to avoid server rate-limiting
                 time.sleep(0.05)
+
+                completed_tiles += 1
+                _print_progress(label, z, completed_tiles, total_tiles)
+
+            print()
 
     print(f"[{label}] Done! Downloaded {total_downloaded} new tiles to {output_dir}")
     return total_downloaded
@@ -161,6 +227,7 @@ def check_directories():
 
 
 if __name__ == "__main__":
+    configure_area()
     check_directories()
     download_tiles()
     download_terrain_tiles()
