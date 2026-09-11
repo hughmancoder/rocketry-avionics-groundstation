@@ -4,6 +4,10 @@
 #include <Arduino.h>
 
 constexpr unsigned long SAMPLE_INTERVAL_MS = 250;
+constexpr float MAP_CENTER_LAT = -30.664806f;
+constexpr float MAP_CENTER_LON = 143.196306f;
+constexpr float MAP_LAT_DELTA = 0.05f;
+constexpr float MAP_LON_DELTA = 0.05f;
 
 unsigned long lastSampleTime = 0;
 
@@ -22,8 +26,10 @@ void sendSample() {
 	const float angVelX = sampleValue(-180.0f, 180.0f);
 	const float angVelY = sampleValue(-180.0f, 180.0f);
 	const float angVelZ = sampleValue(-180.0f, 180.0f);
-	const float lat = sampleValue(-90.0f, 90.0f);
-	const float lon = sampleValue(-180.0f, 180.0f);
+	const float lat = sampleValue(MAP_CENTER_LAT - MAP_LAT_DELTA,
+			MAP_CENTER_LAT + MAP_LAT_DELTA);
+	const float lon = sampleValue(MAP_CENTER_LON - MAP_LON_DELTA,
+			MAP_CENTER_LON + MAP_LON_DELTA);
 
 	Serial.printf(
 			"%lu,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.6f,%.6f\n",
