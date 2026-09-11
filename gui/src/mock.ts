@@ -8,8 +8,7 @@ import { Telemetry } from "./types";
     const timer = setInterval(() => {
       const packet: Telemetry = {
         time: Date.now(),
-        bmpTemp: 20 + Math.random() * 10,
-        imuTemp: 20 + Math.random() * 10,
+        Temp: 20 + Math.random() * 10,
         pressure: 1013 + Math.random() * 20 - 10,
         altitude: Math.random() * 100,
         accX: Math.random() * 2 - 1,
@@ -18,6 +17,8 @@ import { Telemetry } from "./types";
         angVelX: Math.random() * 2 - 1,
         angVelY: Math.random() * 2 - 1,
         angVelZ: Math.random() * 2 - 1,
+        lat: Math.random() * 180 - 90,
+        lon: Math.random() * 360 - 180
       };
       onData(packet);
     }, interval);

@@ -55,3 +55,6 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+#offline map tiles
+maps/

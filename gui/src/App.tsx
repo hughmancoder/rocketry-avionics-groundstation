@@ -5,6 +5,7 @@ import { DEFAULT_TELEMETRY_DATA, PAGE, STATUS, Telemetry } from "./types";
 import TelemetryPage from "./pages/TelemetryPage";
 import SettingsPage from "./pages/SettingsPage";
 import GraphPage from "./pages/GraphPage";
+import MapPage from "./pages/MapPage";
 
 import backgroundImageFile from '@/assets/background-cropped.png';
 function App() {
@@ -32,6 +33,8 @@ function App() {
       />
       case PAGE.GRAPHS:
         return <GraphPage data={telemetryData} />;
+      case PAGE.MAP:
+        return <MapPage data={telemetryData} />;
       default:
         return (
           <TelemetryPage

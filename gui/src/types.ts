@@ -12,7 +12,8 @@ export enum STATUS {
 export enum PAGE {
   TELEMETRY = "telemetry",
   SETTINGS = "settings",
-  GRAPHS = "graphs"
+  GRAPHS = "graphs",
+  MAP = "map"
 }
 
 export type Metric = {

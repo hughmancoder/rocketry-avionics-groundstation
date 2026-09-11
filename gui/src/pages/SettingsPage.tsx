@@ -100,7 +100,7 @@ export default function SettingsPage({
         // Parse each complete line (comma-separated fields)
         for (const line of lines) {
           const parts = line.trim().split(",");
-          if (parts.length < 10) continue; // skip incomplete
+          if (parts.length < 12) continue; // skip incomplete
 
           const packet: Telemetry = {
             time: Number(parts[0]),
