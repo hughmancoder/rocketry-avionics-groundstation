@@ -8,6 +8,9 @@ import GraphPage from "./pages/GraphPage";
 import MapPage from "./pages/MapPage";
 
 import backgroundImageFile from '@/assets/background-cropped.png';
+
+const DEFAULT_LAUNCH_SITE: [number, number] = [143.189907, -30.671004];
+
 function App() {
   // Shared data
   const [page, setPage] = useState<PAGE>(PAGE.TELEMETRY);
@@ -15,6 +18,7 @@ function App() {
   const [telemetryData, setTelemetryData] = useState<Telemetry[]>([
     DEFAULT_TELEMETRY_DATA,
   ]);
+  const [launchSite, setLaunchSite] = useState<[number, number]>(DEFAULT_LAUNCH_SITE);
 
   const latest =
     telemetryData[telemetryData.length - 1] || DEFAULT_TELEMETRY_DATA;
@@ -22,19 +26,25 @@ function App() {
   const time = latest.time || 0;
   const altitude = latest.altitude || 0;
 
+  const settingsView = (
+    <SettingsPage
+      portStatus={portStatus}
+      setPortStatus={setPortStatus}
+      telemetryData={telemetryData}
+      setTelemetryData={setTelemetryData}
+      launchSite={launchSite}
+      setLaunchSite={setLaunchSite}
+    />
+  );
+
   const renderView = () => {
     switch (page) {
       case PAGE.SETTINGS:
-        return <SettingsPage
-        portStatus={portStatus}
-        setPortStatus={setPortStatus}
-        telemetryData={telemetryData}
-        setTelemetryData={setTelemetryData}
-      />
+        return null;
       case PAGE.GRAPHS:
         return <GraphPage data={telemetryData} />;
       case PAGE.MAP:
-        return <MapPage data={telemetryData} />;
+        return <MapPage data={telemetryData} launchSite={launchSite} />;
       default:
         return (
           <TelemetryPage
@@ -82,6 +92,9 @@ function App() {
             <LeftPane data={latest} serial_status={portStatus} telemetry_status={STATUS.DISCONNECTED} />
           </div>
           <div className="flex-1 px-4 sm:px-6 md:px-8 overflow-y-auto">
+            <div className={page === PAGE.SETTINGS ? "contents" : "hidden"}>
+              {settingsView}
+            </div>
             {renderView()}
           </div>
           <div className="px-8 lg:px-16 py-8">

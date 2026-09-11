@@ -4,15 +4,8 @@ import { Map as MapLibreMap, type LngLatLike } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Telemetry } from "@/types";
 
-const LAUNCH_SITE: [number, number] = [143.189907, -30.671004];
 const MAX_MAP_POINTS = 1000;
 const MAP_BASE_URL = `${import.meta.env.BASE_URL}maps`;
-const MAP_BOUNDS: [number, number, number, number] = [
-  143.146306,
-  -30.714806,
-  143.246306,
-  -30.614806,
-];
 
 const offlineStyle: maplibregl.StyleSpecification = {
   version: 8,
@@ -21,7 +14,6 @@ const offlineStyle: maplibregl.StyleSpecification = {
       type: "raster",
       tiles: [`${MAP_BASE_URL}/tiles/{z}/{x}/{y}.jpg`],
       tileSize: 256,
-      bounds: MAP_BOUNDS,
       attribution: "Satellite imagery: local launch-site dataset",
     },
   },
@@ -128,7 +120,13 @@ function FlightPathOverlay({ map, points }: { map: MapLibreMap; points: Telemetr
   return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-10" />;
 }
 
-export default function MapPage({ data }: { data: Telemetry[] }) {
+export default function MapPage({
+  data,
+  launchSite,
+}: {
+  data: Telemetry[];
+  launchSite: [number, number];
+}) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [map, setMap] = useState<MapLibreMap | null>(null);
@@ -141,12 +139,11 @@ export default function MapPage({ data }: { data: Telemetry[] }) {
     const instance = new maplibregl.Map({
       container: mapContainerRef.current,
       style: offlineStyle,
-      center: LAUNCH_SITE,
+      center: launchSite,
       zoom: 13,
       pitch: 55,
       bearing: -20,
       maxPitch: 75,
-      maxBounds: MAP_BOUNDS,
     });
     instance.addControl(new maplibregl.NavigationControl(), "top-right");
     console.info("[Map] satellite tiles:", `${MAP_BASE_URL}/tiles/{z}/{x}/{y}.jpg`);
@@ -166,6 +163,12 @@ export default function MapPage({ data }: { data: Telemetry[] }) {
       mapRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (map) {
+      map.easeTo({ center: launchSite, duration: 500 });
+    }
+  }, [launchSite, map]);
 
   const followLatest = () => {
     const latest = mapPoints[mapPoints.length - 1];

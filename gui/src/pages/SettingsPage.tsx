@@ -10,6 +10,11 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { STATUS, Telemetry } from "@/types";
+import {
+  DataSource,
+  parseCotsGpsTelemetry,
+  parseSradTelemetry,
+} from "@/serialParsers";
 // import { startMockTelemetry } from "@/mock";
 
 type SettingsPageProps = {
@@ -17,6 +22,8 @@ type SettingsPageProps = {
   setPortStatus: React.Dispatch<React.SetStateAction<STATUS>>;
   telemetryData: Telemetry[];
   setTelemetryData: React.Dispatch<React.SetStateAction<Telemetry[]>>;
+  launchSite: [number, number];
+  setLaunchSite: React.Dispatch<React.SetStateAction<[number, number]>>;
 };
 
 export default function SettingsPage({
@@ -24,11 +31,18 @@ export default function SettingsPage({
   setPortStatus,
   telemetryData,
   setTelemetryData,
+  launchSite,
+  setLaunchSite,
 }: SettingsPageProps) {
   const [ports, setPorts] = useState<SerialPort[]>([]);
   const [selectedPort, setSelectedPort] = useState<SerialPort | null>(null);
   const [rawData, setRawData] = useState<string>("");
+  const [dataSource, setDataSource] = useState<DataSource>("srad");
+  const [launchLongitude, setLaunchLongitude] = useState(String(launchSite[0]));
+  const [launchLatitude, setLaunchLatitude] = useState(String(launchSite[1]));
+  const [launchSiteMessage, setLaunchSiteMessage] = useState("");
   const readerRef = useRef<ReadableStreamDefaultReader | null>(null); 
+  const streamStartTimeRef = useRef<number>(0);
 
   // MOCK data
   /*
@@ -75,6 +89,7 @@ export default function SettingsPage({
         console.log("INFO: Connecting to port:", selectedPort);
       await selectedPort.open({ baudRate: 115200 });
       setPortStatus(STATUS.CONNECTED);
+      streamStartTimeRef.current = Date.now();
 
       const reader = selectedPort.readable?.getReader();
       if (!reader) {
@@ -97,34 +112,25 @@ export default function SettingsPage({
 
         setRawData((prev) => prev + buffer);
 
-        // Parse each complete line (comma-separated fields)
+        // Decode each complete line into the shared telemetry shape.
         for (const line of lines) {
-          const parts = line.trim().split(",");
-          if (parts.length < 12) continue; // skip incomplete
+          const packet = dataSource === "srad"
+            ? parseSradTelemetry(line)
+            : parseCotsGpsTelemetry(
+                line,
+                Date.now() - streamStartTimeRef.current,
+              );
 
-          const packet: Telemetry = {
-            time: Number(parts[0]),
-            Temp: Number(parts[1]),
-            pressure: Number(parts[2]),
-            altitude: Number(parts[3]),
-            accX: Number(parts[4]),
-            accY: Number(parts[5]),
-            accZ: Number(parts[6]),
-            angVelX: Number(parts[7]),
-            angVelY: Number(parts[8]),
-            angVelZ: Number(parts[9]),
-            lat: Number(parts[10]),
-            lon: Number(parts[11])
-          };
-          // Push the new packet into parent state
-          setTelemetryData((prev) => [...prev, packet]);
+          if (packet) {
+            setTelemetryData((prev) => [...prev, packet]);
+          }
         }
       }
     } catch (err) {
       console.error("Failed to connect:", err);
       setPortStatus(STATUS.DISCONNECTED);
     }
-  }, [selectedPort, setPortStatus, setTelemetryData]);
+  }, [dataSource, selectedPort, setPortStatus, setTelemetryData]);
 
   // Closes the port
   const disconnectPort = useCallback(async () => {
@@ -143,6 +149,26 @@ export default function SettingsPage({
     }
   }, [selectedPort, setPortStatus]);
 
+  const applyLaunchSite = () => {
+    const longitude = Number(launchLongitude);
+    const latitude = Number(launchLatitude);
+
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      setLaunchSiteMessage("Enter a valid latitude and longitude.");
+      return;
+    }
+
+    setLaunchSite([longitude, latitude]);
+    setLaunchSiteMessage("Launch site updated.");
+  };
+
   useEffect(() => {
     if (selectedPort) {
       setPortStatus(STATUS.AWAITING);
@@ -151,6 +177,77 @@ export default function SettingsPage({
 
   return (
     <div className="pt-8 px-4 sm:px-8 md:px-16">
+      <div className="mb-6 rounded bg-slate-900/70 p-4 text-white">
+        <p className="mb-3 font-semibold">Launch site</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="text-sm">
+            Latitude
+            <input
+              type="number"
+              min="-90"
+              max="90"
+              step="any"
+              value={launchLatitude}
+              onChange={(event) => setLaunchLatitude(event.target.value)}
+              className="mt-1 w-full rounded border border-slate-400 px-3 py-2 text-black"
+            />
+          </label>
+          <label className="text-sm">
+            Longitude
+            <input
+              type="number"
+              min="-180"
+              max="180"
+              step="any"
+              value={launchLongitude}
+              onChange={(event) => setLaunchLongitude(event.target.value)}
+              className="mt-1 w-full rounded border border-slate-400 px-3 py-2 text-black"
+            />
+          </label>
+        </div>
+        <Button
+          type="button"
+          onClick={applyLaunchSite}
+          className="mt-3 bg-yellow-500 text-white hover:bg-yellow-600"
+        >
+          Apply launch site
+        </Button>
+        {launchSiteMessage && (
+          <p className="mt-2 text-sm text-slate-300">{launchSiteMessage}</p>
+        )}
+      </div>
+
+      <div className="mb-4">
+        <p className="mb-2 font-semibold text-white">Data source</p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            onClick={() => setDataSource("srad")}
+            disabled={isConnected}
+            className={dataSource === "srad"
+              ? "bg-yellow-500 text-white hover:bg-yellow-600"
+              : "bg-gray-700 text-white hover:bg-gray-800"}
+          >
+            SRAD
+          </Button>
+          <Button
+            type="button"
+            onClick={() => setDataSource("cots")}
+            disabled={isConnected}
+            className={dataSource === "cots"
+              ? "bg-yellow-500 text-white hover:bg-yellow-600"
+              : "bg-gray-700 text-white hover:bg-gray-800"}
+          >
+            COTS Feather
+          </Button>
+        </div>
+        <p className="mt-2 text-sm text-gray-300">
+          {dataSource === "srad"
+            ? "12-field CSV telemetry"
+            : "GPS_STAT position telemetry; unavailable sensors are zero"}
+        </p>
+      </div>
+
       <Select
         value={selectedPort ? String(selectedPort.getInfo().usbProductId) : ""}
         onValueChange={onSelectPort}
@@ -161,7 +258,7 @@ export default function SettingsPage({
         <SelectContent>
           <SelectGroup>
             <SelectLabel>Serial Ports</SelectLabel>
-            {ports.map((port, i) => {setPortStatus(STATUS.DISCONNECTED);
+            {ports.map((port, i) => {
               const info = port.getInfo();
               const portId = String(info.usbProductId);
               return (
