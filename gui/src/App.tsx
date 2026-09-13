@@ -6,10 +6,9 @@ import TelemetryPage from "./pages/TelemetryPage";
 import SettingsPage from "./pages/SettingsPage";
 import GraphPage from "./pages/GraphPage";
 import MapPage from "./pages/MapPage";
+import { DEFAULT_CONFIG } from "./config";
 
 import backgroundImageFile from '@/assets/background-cropped.png';
-
-const DEFAULT_LAUNCH_SITE: [number, number] = [143.189907, -30.671004];
 
 function App() {
   // Shared data
@@ -18,7 +17,10 @@ function App() {
   const [telemetryData, setTelemetryData] = useState<Telemetry[]>([
     DEFAULT_TELEMETRY_DATA,
   ]);
-  const [launchSite, setLaunchSite] = useState<[number, number]>(DEFAULT_LAUNCH_SITE);
+  const [launchSite, setLaunchSite] = useState<[number, number]>([
+    DEFAULT_CONFIG.launchSite.longitude,
+    DEFAULT_CONFIG.launchSite.latitude,
+  ]);
 
   const latest =
     telemetryData[telemetryData.length - 1] || DEFAULT_TELEMETRY_DATA;

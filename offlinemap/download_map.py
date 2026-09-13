@@ -230,4 +230,4 @@ if __name__ == "__main__":
     configure_area()
     check_directories()
     download_tiles()
-    download_terrain_tiles()
+    #download_terrain_tiles()

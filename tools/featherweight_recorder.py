@@ -7,7 +7,7 @@ from datetime import datetime
 # ==========================================
 # CONFIGURATION
 # ==========================================
-PORT = '/tmp/virtual-serial-0' # Change if your device path changes
+PORT = '/dev/tty.usbserial-DK0JXP7Q'  # Change if your device path changes
 BAUD = 115200
 
 # ANSI color codes for terminal readability

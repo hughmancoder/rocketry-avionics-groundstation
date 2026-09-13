@@ -21,7 +21,7 @@ import pty
 import time
 import serial
 
-REAL_PORT = "/dev/tty.usbserial-0001"  # <-- change to your real device
+REAL_PORT = "/dev/tty.usbserial-DK0JXP7Q"  # <-- change to your real device
 BAUDRATE = 115200
 NUM_CONSUMERS = 3
 SYMLINK_DIR = "/tmp"

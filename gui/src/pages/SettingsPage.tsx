@@ -15,6 +15,7 @@ import {
   parseCotsGpsTelemetry,
   parseSradTelemetry,
 } from "@/serialParsers";
+import { DEFAULT_CONFIG } from "@/config";
 // import { startMockTelemetry } from "@/mock";
 
 type SettingsPageProps = {
@@ -37,9 +38,13 @@ export default function SettingsPage({
   const [ports, setPorts] = useState<SerialPort[]>([]);
   const [selectedPort, setSelectedPort] = useState<SerialPort | null>(null);
   const [rawData, setRawData] = useState<string>("");
-  const [dataSource, setDataSource] = useState<DataSource>("srad");
-  const [transport, setTransport] = useState<"serial" | "websocket">("serial");
-  const [websocketUrl, setWebsocketUrl] = useState("ws://localhost:8765");
+  const [dataSource, setDataSource] = useState<DataSource>(DEFAULT_CONFIG.dataSource);
+  const [transport, setTransport] = useState<"serial" | "websocket">(
+    DEFAULT_CONFIG.connection.transport,
+  );
+  const [websocketUrl, setWebsocketUrl] = useState(
+    DEFAULT_CONFIG.connection.websocketUrl,
+  );
   const [launchLongitude, setLaunchLongitude] = useState(String(launchSite[0]));
   const [launchLatitude, setLaunchLatitude] = useState(String(launchSite[1]));
   const [launchSiteMessage, setLaunchSiteMessage] = useState("");
@@ -91,7 +96,7 @@ export default function SettingsPage({
     if (!selectedPort) return;
     try {
         console.log("INFO: Connecting to port:", selectedPort);
-      await selectedPort.open({ baudRate: 115200 });
+      await selectedPort.open({ baudRate: DEFAULT_CONFIG.connection.baudRate });
       setPortStatus(STATUS.CONNECTED);
       streamStartTimeRef.current = Date.now();
 
@@ -256,12 +261,20 @@ export default function SettingsPage({
     ].join("\n");
     const filename = `telemetry-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const rawblob = new Blob([rawData], {type: "text/plain;charset=us-ascii"});
     const url = URL.createObjectURL(blob);
+    const url2 = URL.createObjectURL(rawblob);
     const link = document.createElement("a");
+    const link2 = document.createElement("a");
     link.href = url;
+    link2.href = url2;
     link.download = filename;
+    link2.download = `raw-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`
     link.click();
+    link2.click();
     URL.revokeObjectURL(url);
+    URL.revokeObjectURL(url2);
+
   };
 
   useEffect(() => {
@@ -418,13 +431,6 @@ export default function SettingsPage({
           Clear ports
         </Button>
         <Button
-          onClick={exportTelemetryCsv}
-          disabled={telemetryData.length === 0}
-          className="bg-blue-700 hover:bg-blue-800 w-full sm:w-auto"
-        >
-          Export CSV
-        </Button>
-        <Button
           // onClick={isConnected ? disconnectPort : startMockTelemetry} // NOTE: for mock data
           onClick={isConnected
             ? disconnectPort
@@ -454,6 +460,14 @@ export default function SettingsPage({
         <pre className="mt-2 p-2 bg-gray-100 text-sm overflow-auto h-80 text-blue-900">
           {JSON.stringify(telemetryData, null, 2)}
         </pre>
+         <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mt-4"></div>
+         <Button
+          onClick={exportTelemetryCsv}
+          disabled={telemetryData.length === 0}
+          className="bg-blue-700 hover:bg-blue-800 w-full sm:w-auto"
+        >
+          Export CSV and Raw Data
+        </Button>
       </div>
     </div>
   );
