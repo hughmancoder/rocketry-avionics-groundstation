@@ -1,6 +1,6 @@
-import { Telemetry } from "./types";
+import { DATA_COLUMNS, Telemetry } from "./types";
 
-export type DataSource = "srad" | "cots";
+export type DataSource = "srad" | "cots" | "replay";
 
 function numberOrNull(value: string): number | null {
   const parsed = Number(value);
@@ -32,6 +32,37 @@ export function parseSradTelemetry(line: string): Telemetry | null {
     lat: values[10]!,
     lon: values[11]!,
   };
+}
+
+export function parseTelemetryCsv(csv: string): Telemetry[] {
+  const lines = csv.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const header = lines[0].split(",").map((column) => column.trim());
+  const columns = DATA_COLUMNS.map(({ key }) => key);
+  const columnIndexes = columns.map((column) => header.indexOf(column));
+  const hasHeader = columnIndexes.every((index) => index >= 0);
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  return dataLines
+    .map((line) => {
+      const values = line.split(",");
+      const packet = columns.map((column, index) => ({
+        column,
+        value: numberOrNull(values[hasHeader ? columnIndexes[index] : index] ?? ""),
+      }));
+
+      if (packet.some(({ value }) => value === null)) {
+        return null;
+      }
+
+      return Object.fromEntries(
+        packet.map(({ column, value }) => [column, value]),
+      ) as Telemetry;
+    })
+    .filter((packet): packet is Telemetry => packet !== null);
 }
 
 export function parseCotsGpsTelemetry(

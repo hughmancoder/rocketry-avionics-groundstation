@@ -9,10 +9,11 @@ import {
   SelectLabel,
   SelectItem,
 } from "@/components/ui/select";
-import { STATUS, Telemetry } from "@/types";
+import { DATA_COLUMNS, STATUS, Telemetry } from "@/types";
 import {
   DataSource,
   parseCotsGpsTelemetry,
+  parseTelemetryCsv,
   parseSradTelemetry,
 } from "@/serialParsers";
 import { DEFAULT_CONFIG } from "@/config";
@@ -45,6 +46,11 @@ export default function SettingsPage({
   const [websocketUrl, setWebsocketUrl] = useState(
     DEFAULT_CONFIG.connection.websocketUrl,
   );
+  const [replayPackets, setReplayPackets] = useState<Telemetry[]>([]);
+  const [replayFileName, setReplayFileName] = useState("");
+  const [replayIndex, setReplayIndex] = useState(0);
+  const [replayPlaying, setReplayPlaying] = useState(false);
+  const [replaySpeed, setReplaySpeed] = useState(1);
   const [launchLongitude, setLaunchLongitude] = useState(String(launchSite[0]));
   const [launchLatitude, setLaunchLatitude] = useState(String(launchSite[1]));
   const [launchSiteMessage, setLaunchSiteMessage] = useState("");
@@ -52,6 +58,7 @@ export default function SettingsPage({
   const websocketRef = useRef<WebSocket | null>(null);
   const websocketBufferRef = useRef("");
   const streamStartTimeRef = useRef<number>(0);
+  const replayTimerRef = useRef<number | null>(null);
 
   // MOCK data
   /*
@@ -239,20 +246,7 @@ export default function SettingsPage({
   };
 
   const exportTelemetryCsv = () => {
-    const columns: (keyof Telemetry)[] = [
-      "time",
-      "Temp",
-      "pressure",
-      "altitude",
-      "accX",
-      "accY",
-      "accZ",
-      "angVelX",
-      "angVelY",
-      "angVelZ",
-      "lat",
-      "lon",
-    ];
+    const columns = DATA_COLUMNS.map(({ key }) => key);
     const csv = [
       columns.join(","),
       ...telemetryData.map((packet) =>
@@ -275,6 +269,79 @@ export default function SettingsPage({
     URL.revokeObjectURL(url);
     URL.revokeObjectURL(url2);
 
+  };
+
+  const clearReplayTimer = () => {
+    if (replayTimerRef.current !== null) {
+      window.clearTimeout(replayTimerRef.current);
+      replayTimerRef.current = null;
+    }
+  };
+
+  const replayNextPacket = useCallback((index: number) => {
+    if (index >= replayPackets.length) {
+      setReplayPlaying(false);
+      replayTimerRef.current = null;
+      return;
+    }
+
+    const packet = replayPackets[index];
+    setTelemetryData((previous) => [...previous, packet]);
+    setReplayIndex(index + 1);
+
+    const nextPacket = replayPackets[index + 1];
+    if (!nextPacket) {
+      setReplayPlaying(false);
+      replayTimerRef.current = null;
+      return;
+    }
+
+    const delay = Math.max(
+      0,
+      (nextPacket.time - packet.time) / replaySpeed,
+    );
+    replayTimerRef.current = window.setTimeout(
+      () => replayNextPacket(index + 1),
+      delay,
+    );
+  }, [replayPackets, replaySpeed, setTelemetryData]);
+
+  const loadReplayFile = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    clearReplayTimer();
+    setReplayPlaying(false);
+    setReplayIndex(0);
+    const packets = parseTelemetryCsv(await file.text());
+    setReplayPackets(packets);
+    setReplayFileName(file.name);
+    setTelemetryData([]);
+  };
+
+  const startReplay = () => {
+    if (replayPackets.length === 0) return;
+
+    clearReplayTimer();
+    if (replayIndex === 0) {
+      setTelemetryData([]);
+    }
+    setReplayPlaying(true);
+    replayNextPacket(replayIndex);
+  };
+
+  const pauseReplay = () => {
+    clearReplayTimer();
+    setReplayPlaying(false);
+  };
+
+  const stopReplay = () => {
+    clearReplayTimer();
+    setReplayPlaying(false);
+    setReplayIndex(0);
+    setTelemetryData([]);
   };
 
   useEffect(() => {
@@ -325,7 +392,7 @@ export default function SettingsPage({
         )}
       </div>
 
-      <div className="mb-4">
+      <div className={dataSource === "replay" ? "hidden" : "mb-4"}>
         <p className="mb-2 font-semibold text-white">Connection type</p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button
@@ -385,14 +452,74 @@ export default function SettingsPage({
           >
             COTS Feather
           </Button>
+          <Button
+            type="button"
+            onClick={() => setDataSource("replay")}
+            disabled={isConnected}
+            className={dataSource === "replay"
+              ? "bg-yellow-500 text-white hover:bg-yellow-600"
+              : "bg-gray-700 text-white hover:bg-gray-800"}
+          >
+            CSV Replay
+          </Button>
         </div>
         <p className="mt-2 text-sm text-gray-300">
           {dataSource === "srad"
             ? "12-field CSV telemetry"
-            : "GPS_STAT position telemetry; unavailable sensors are zero"}
+            : dataSource === "cots"
+              ? "GPS_STAT position telemetry; unavailable sensors are zero"
+              : "Replay telemetry from an exported CSV file"}
         </p>
       </div>
 
+      {dataSource === "replay" && (
+        <div className="mb-4 rounded bg-slate-900/70 p-4 text-white">
+          <p className="mb-3 font-semibold">CSV replay</p>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            onChange={loadReplayFile}
+            className="block w-full rounded border border-slate-400 bg-white px-3 py-2 text-black"
+          />
+          {replayFileName && (
+            <p className="mt-2 text-sm text-slate-300">
+              {replayFileName}: {replayPackets.length} packets
+            </p>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              onClick={replayPlaying ? pauseReplay : startReplay}
+              disabled={replayPackets.length === 0}
+              className="bg-yellow-500 text-white hover:bg-yellow-600"
+            >
+              {replayPlaying ? "Pause" : "Play"}
+            </Button>
+            <Button
+              type="button"
+              onClick={stopReplay}
+              disabled={replayPackets.length === 0}
+              className="bg-gray-700 text-white hover:bg-gray-800"
+            >
+              Stop
+            </Button>
+            <label className="flex items-center gap-2 text-sm">
+              Speed
+              <select
+                value={replaySpeed}
+                onChange={(event) => setReplaySpeed(Number(event.target.value))}
+                className="rounded border border-slate-400 px-2 py-2 text-black"
+              >
+                <option value="0.25">0.25x</option>
+                <option value="1">1x</option>
+                <option value="2">2x</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      )}
+
+      <div className={dataSource === "replay" ? "hidden" : "block"}>
       <Select
         value={selectedPort ? String(selectedPort.getInfo().usbProductId) : ""}
         onValueChange={onSelectPort}
@@ -446,6 +573,7 @@ export default function SettingsPage({
         >
           {isConnected ? "Disconnect" : "Connect"}
         </Button>
+      </div>
       </div>
 
       <div className="mt-16">
