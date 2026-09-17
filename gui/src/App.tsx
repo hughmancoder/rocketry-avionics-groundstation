@@ -5,14 +5,21 @@ import { DEFAULT_TELEMETRY_DATA, PAGE, STATUS, Telemetry } from "./types";
 import TelemetryPage from "./pages/TelemetryPage";
 import SettingsPage from "./pages/SettingsPage";
 import GraphPage from "./pages/GraphPage";
+import MapPage from "./pages/MapPage";
+import { DEFAULT_CONFIG } from "./config";
 
 import backgroundImageFile from '@/assets/background-cropped.png';
+
 function App() {
   // Shared data
   const [page, setPage] = useState<PAGE>(PAGE.TELEMETRY);
   const [portStatus, setPortStatus] = useState<STATUS>(STATUS.DISCONNECTED);
   const [telemetryData, setTelemetryData] = useState<Telemetry[]>([
     DEFAULT_TELEMETRY_DATA,
+  ]);
+  const [launchSite, setLaunchSite] = useState<[number, number]>([
+    DEFAULT_CONFIG.launchSite.longitude,
+    DEFAULT_CONFIG.launchSite.latitude,
   ]);
 
   const latest =
@@ -21,17 +28,25 @@ function App() {
   const time = latest.time || 0;
   const altitude = latest.altitude || 0;
 
+  const settingsView = (
+    <SettingsPage
+      portStatus={portStatus}
+      setPortStatus={setPortStatus}
+      telemetryData={telemetryData}
+      setTelemetryData={setTelemetryData}
+      launchSite={launchSite}
+      setLaunchSite={setLaunchSite}
+    />
+  );
+
   const renderView = () => {
     switch (page) {
       case PAGE.SETTINGS:
-        return <SettingsPage
-        portStatus={portStatus}
-        setPortStatus={setPortStatus}
-        telemetryData={telemetryData}
-        setTelemetryData={setTelemetryData}
-      />
+        return null;
       case PAGE.GRAPHS:
         return <GraphPage data={telemetryData} />;
+      case PAGE.MAP:
+        return <MapPage data={telemetryData} launchSite={launchSite} />;
       default:
         return (
           <TelemetryPage
@@ -79,6 +94,9 @@ function App() {
             <LeftPane data={latest} serial_status={portStatus} telemetry_status={STATUS.DISCONNECTED} />
           </div>
           <div className="flex-1 px-4 sm:px-6 md:px-8 overflow-y-auto">
+            <div className={page === PAGE.SETTINGS ? "contents" : "hidden"}>
+              {settingsView}
+            </div>
             {renderView()}
           </div>
           <div className="px-8 lg:px-16 py-8">

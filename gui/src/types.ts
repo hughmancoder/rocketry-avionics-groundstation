@@ -12,7 +12,8 @@ export enum STATUS {
 export enum PAGE {
   TELEMETRY = "telemetry",
   SETTINGS = "settings",
-  GRAPHS = "graphs"
+  GRAPHS = "graphs",
+  MAP = "map"
 }
 
 export type Metric = {
@@ -23,8 +24,7 @@ export type Metric = {
 
 export type Telemetry = {
   time: number;
-  bmpTemp: number;
-  imuTemp: number;
+  Temp: number;
   pressure: number;
   altitude: number;
   accX: number;
@@ -33,12 +33,13 @@ export type Telemetry = {
   angVelX: number;
   angVelY: number;
   angVelZ: number;
+  lat: number;
+  lon: number;
 };
 
 export const DEFAULT_TELEMETRY_DATA: Telemetry = {
   time: 0,
-  bmpTemp: 0,
-  imuTemp: 0,
+  Temp: 0,
   pressure: 0,
   altitude: 0,
   accX: 0,
@@ -47,12 +48,13 @@ export const DEFAULT_TELEMETRY_DATA: Telemetry = {
   angVelX: 0,
   angVelY: 0,
   angVelZ: 0,
+  lat: 0,
+  lon: 0,
 };
 
 export const DATA_COLUMNS: { key: keyof Telemetry; label: string }[] = [
   { key: "time", label: "Time" },
-  { key: "bmpTemp", label: "BMP Temp" },
-  { key: "imuTemp", label: "IMU Temp" },
+  { key: "Temp", label: "Temp" },
   { key: "pressure", label: "Pressure" },
   { key: "altitude", label: "Altitude" },
   { key: "accX", label: "Acc X" },
@@ -61,11 +63,14 @@ export const DATA_COLUMNS: { key: keyof Telemetry; label: string }[] = [
   { key: "angVelX", label: "Ang Vel X" },
   { key: "angVelY", label: "Ang Vel Y" },
   { key: "angVelZ", label: "Ang Vel Z" },
+  { key: "lat", label: "Latitude" },
+  { key: "lon", label: "Longitude" },
 ];
 
 export const PLOT_METADATA: { key: keyof Telemetry; label: string, color: string }[] = [
-  { key: "bmpTemp", label: "BMP Temp", color: "#ff6730" },    
-  { key: "imuTemp", label: "IMU Temp", color: "#ff9b30" },    
+  { key: "Temp", label: "Temp", color: "#ff6730" },    
   { key: "pressure", label: "Pressure", color: "#ffba30" },    
-  { key: "altitude", label: "Altitude", color: "#FFD630" }     
+  { key: "altitude", label: "Altitude", color: "#FFD630" },
+  { key: "lat", label: "Latitude", color: "#30ffba" },
+  { key: "lon", label: "Longitude", color: "#30d4ff" }
 ];
