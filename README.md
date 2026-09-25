@@ -4,7 +4,7 @@ GUI, groundstation, and telemetry board firmware for custom stm32-based PCB with
 
 ## telemetry_board
 
-`STM32L433CCUx` based firmware for the Telemetry Board. The board interfaces with an SX1276/7/8/9 LoRa transceiver to transmit telemetry data.
+`STM32L433CCUx` based firmware for the Telemetry Board. The board interfaces with an SX1276/7/8/9 LoRa transceiver to transmit telemetry data and maxM10s gps module to track position.
 
 [Refer to the telemetry_board README](telemetry_board/README.md)
 
@@ -15,7 +15,9 @@ GUI, groundstation, and telemetry board firmware for custom stm32-based PCB with
 
 ## Ground Station
 
-ESP32-based.
+ESP32-based receiver and forwarder.
+
+[Refer to the ground_station README](ground_station/README.md)
 
 ## Graphical User Interface (GUI)
 
