@@ -17,7 +17,6 @@ GUI, groundstation, and telemetry board firmware for custom stm32-based PCB with
 
 ESP32-based.
 
-
 ## Graphical User Interface (GUI)
 
 [Gui README](gui/README.md)

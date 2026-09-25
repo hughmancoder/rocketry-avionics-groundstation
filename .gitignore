@@ -55,3 +55,8 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Telemetry Board / Embedded build artifacts
+telemetry_board/.pio/
+telemetry_board/.cache/
+telemetry_board/compile_commands.json

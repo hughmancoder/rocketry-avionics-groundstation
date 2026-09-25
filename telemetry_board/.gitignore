@@ -1,0 +1,30 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.clang_complete
+.gcc-flags.json
+
+# STM32CubeIDE / Eclipse
+Debug/
+Release/
+.settings/
+*.launch
+
+# Build Artifacts
+*.o
+*.elf
+*.hex
+*.bin
+*.map
+
+# VS Code
+.vscode/
+
+# Docs (Uncomment if you want to ignore the docs folder, currently tracked)
+# docs/
+
+# IDE / OS Caches
+.cache/
+.DS_Store
+docs/MAX-M10S_DataSheet_UBX-20035208.pdf
