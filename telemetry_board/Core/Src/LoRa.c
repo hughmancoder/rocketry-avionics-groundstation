@@ -58,12 +58,6 @@ void LoRa_gotoMode(LoRa *_LoRa, int mode) {
   } else if (mode == TRANSMIT_MODE) {
     data = (read & 0xF8) | 0x03;
     _LoRa->current_mode = TRANSMIT_MODE;
-  } else if (mode == RXCONTIN_MODE) {
-    data = (read & 0xF8) | 0x05;
-    _LoRa->current_mode = RXCONTIN_MODE;
-  } else if (mode == RXSINGLE_MODE) {
-    data = (read & 0xF8) | 0x06;
-    _LoRa->current_mode = RXSINGLE_MODE;
   }
 
   LoRa_write(_LoRa, RegOpMode, data);
@@ -253,6 +247,8 @@ void LoRa_setSpreadingFactor(LoRa *_LoRa, int SF) {
 \* -----------------------------------------------------------------------------
 */
 void LoRa_setPower(LoRa *_LoRa, uint8_t power) {
+  // PA_BOOST in normal mode (up to +17 dBm); 0x87 would enable +20 dBm
+  LoRa_write(_LoRa, RegPaDac, 0x84);
   LoRa_write(_LoRa, RegPaConfig, power);
   HAL_Delay(10);
 }
@@ -288,9 +284,9 @@ void LoRa_setOCP(LoRa *_LoRa, uint8_t current) {
 }
 
 /* -----------------------------------------------------------------------------
-*\ name        : LoRa_setTOMsb_setCRCon
+*\ name        : LoRa_setCRCon
 
-                description : set timeout msb to 0xFF + set CRC enable.
+                description : enable the payload CRC appended to each packet.
 
                 arguments   :
                         LoRa* LoRa        --> LoRa object handler
@@ -298,20 +294,56 @@ void LoRa_setOCP(LoRa *_LoRa, uint8_t current) {
                 returns     : Nothing
 \* -----------------------------------------------------------------------------
 */
-void LoRa_setTOMsb_setCRCon(LoRa *_LoRa) {
+void LoRa_setCRCon(LoRa *_LoRa) {
   uint8_t read, data;
 
   read = LoRa_read(_LoRa, RegModemConfig2);
 
-  data = read | 0x07;
+  data = read | 0x04;
   LoRa_write(_LoRa, RegModemConfig2, data);
   HAL_Delay(10);
 }
 
 /* -----------------------------------------------------------------------------
-*\ name        : LoRa_setTOMsb_setCRCon
+*\ name        : LoRa_setTxContinuous
 
-                description : set timeout msb to 0xFF + set CRC enable.
+                description : TxContinuousMode (RegModemConfig2 bit 3): when
+set, TRANSMIT_MODE keeps sending the FIFO contents back to back until the
+mode is changed. Test use only (PA current / spectrum checks).
+
+                arguments   :
+                        LoRa*   LoRa        --> LoRa object handler
+                        uint8_t enable      --> 1 = continuous, 0 = normal
+
+                returns     : Nothing
+\* -----------------------------------------------------------------------------
+*/
+void LoRa_setTxContinuous(LoRa *_LoRa, uint8_t enable) {
+  uint8_t read = LoRa_read(_LoRa, RegModemConfig2);
+  uint8_t data = enable ? (read | 0x08) : (read & 0xF7);
+  LoRa_write(_LoRa, RegModemConfig2, data);
+}
+
+void LoRa_startTxContinuous(LoRa *_LoRa, uint8_t *data, uint8_t length) {
+  LoRa_gotoMode(_LoRa, STNBY_MODE);
+  uint8_t base = LoRa_read(_LoRa, RegFiFoTxBaseAddr);
+  LoRa_write(_LoRa, RegFiFoAddPtr, base);
+  LoRa_write(_LoRa, RegPayloadLength, length);
+  LoRa_BurstWrite(_LoRa, RegFiFo, data, length);
+  LoRa_setTxContinuous(_LoRa, 1);
+  LoRa_gotoMode(_LoRa, TRANSMIT_MODE);
+}
+
+void LoRa_stopTxContinuous(LoRa *_LoRa) {
+  LoRa_gotoMode(_LoRa, STNBY_MODE);
+  LoRa_setTxContinuous(_LoRa, 0);
+  LoRa_write(_LoRa, RegIrqFlags, 0xFF);
+}
+
+/* -----------------------------------------------------------------------------
+*\ name        : LoRa_setSyncWord
+
+                description : set the LoRa sync word.
 
                 arguments   :
                         LoRa* LoRa        --> LoRa object handler
@@ -459,74 +491,6 @@ uint8_t LoRa_transmit(LoRa *_LoRa, uint8_t *data, uint8_t length,
 }
 
 /* -----------------------------------------------------------------------------
-*\ name        : LoRa_startReceiving
-
-                description : Start receiving continuously
-
-                arguments   :
-                        LoRa*    LoRa     --> LoRa object handler
-
-                returns     : Nothing
-\* -----------------------------------------------------------------------------
-*/
-void LoRa_startReceiving(LoRa *_LoRa) { LoRa_gotoMode(_LoRa, RXCONTIN_MODE); }
-
-/* -----------------------------------------------------------------------------
-*\ name        : LoRa_Receive
-
-                description : Read received data from module
-
-                arguments   :
-                        LoRa*    LoRa     --> LoRa object handler
-                        uint8_t  data			--> A pointer to the
-array that you want to write bytes in it uint8_t	 length   --> Determines
-how many bytes you want to read
-
-                returns     : The number of bytes received
-\* -----------------------------------------------------------------------------
-*/
-uint8_t LoRa_receive(LoRa *_LoRa, uint8_t *data, uint8_t length) {
-  uint8_t read;
-  uint8_t number_of_bytes;
-  uint8_t min = 0;
-
-  for (int i = 0; i < length; i++)
-    data[i] = 0;
-
-  LoRa_gotoMode(_LoRa, STNBY_MODE);
-  read = LoRa_read(_LoRa, RegIrqFlags);
-  if ((read & 0x40) != 0) {
-    LoRa_write(_LoRa, RegIrqFlags, 0xFF);
-    number_of_bytes = LoRa_read(_LoRa, RegRxNbBytes);
-    read = LoRa_read(_LoRa, RegFiFoRxCurrentAddr);
-    LoRa_write(_LoRa, RegFiFoAddPtr, read);
-    min = length >= number_of_bytes ? number_of_bytes : length;
-    for (int i = 0; i < min; i++)
-      data[i] = LoRa_read(_LoRa, RegFiFo);
-  }
-  LoRa_gotoMode(_LoRa, RXCONTIN_MODE);
-  return min;
-}
-
-/* -----------------------------------------------------------------------------
-*\ name        : LoRa_getRSSI
-
-                description : initialize and set the right setting according to
-LoRa sruct vars
-
-                arguments   :
-                        LoRa* LoRa        --> LoRa object handler
-
-                returns     : Returns the RSSI value of last received packet.
-\* -----------------------------------------------------------------------------
-*/
-int LoRa_getRSSI(LoRa *_LoRa) {
-  uint8_t read;
-  read = LoRa_read(_LoRa, RegPktRssiValue);
-  return -164 + read;
-}
-
-/* -----------------------------------------------------------------------------
 *\ name        : LoRa_init
 
                 description : initialize and set the right setting according to
@@ -550,9 +514,15 @@ uint16_t LoRa_init(LoRa *_LoRa) {
     // turn on LoRa mode:
     read = LoRa_read(_LoRa, RegOpMode);
     HAL_Delay(10);
-    data = read | 0x80;
+    // LoRa mode, and clear LowFrequencyModeOn (bit 3, set at reset): the
+    // 915 MHz band is high frequency
+    data = (read | 0x80) & ~0x08;
     LoRa_write(_LoRa, RegOpMode, data);
     HAL_Delay(100);
+
+    // NRESET isn't driven by the MCU, so the radio keeps its registers across
+    // MCU resets: clear anything a test mode may have left set
+    LoRa_setTxContinuous(_LoRa, 0);
 
     // set frequency:
     LoRa_setFrequency(_LoRa, _LoRa->frequency);
@@ -563,15 +533,9 @@ uint16_t LoRa_init(LoRa *_LoRa) {
     // set over current protection:
     LoRa_setOCP(_LoRa, _LoRa->overCurrentProtection);
 
-    // set LNA gain:
-    LoRa_write(_LoRa, RegLna, 0x23);
-
-    // set spreading factor, CRC on, and Timeout Msb:
-    LoRa_setTOMsb_setCRCon(_LoRa);
+    // set spreading factor and CRC on:
+    LoRa_setCRCon(_LoRa);
     LoRa_setSpreadingFactor(_LoRa, _LoRa->spredingFactor);
-
-    // set Timeout Lsb:
-    LoRa_write(_LoRa, RegSymbTimeoutL, 0xFF);
 
     // set bandwidth, coding rate and expilicit mode:
     // 8 bit RegModemConfig --> | X | X | X | X | X | X | X | X |
@@ -584,11 +548,6 @@ uint16_t LoRa_init(LoRa *_LoRa) {
     // set preamble:
     LoRa_write(_LoRa, RegPreambleMsb, _LoRa->preamble >> 8);
     LoRa_write(_LoRa, RegPreambleLsb, _LoRa->preamble >> 0);
-
-    // DIO mapping:   --> DIO: RxDone
-    read = LoRa_read(_LoRa, RegDioMapping1);
-    data = read | 0x3F;
-    LoRa_write(_LoRa, RegDioMapping1, data);
 
     // goto standby mode:
     LoRa_gotoMode(_LoRa, STNBY_MODE);

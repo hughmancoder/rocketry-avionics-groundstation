@@ -63,9 +63,11 @@ void setup() {
 void loop() {
   // Check if a packet has been received
   int packetSize = LoRa.parsePacket();
+  // digitalWrite(LED_PIN, HIGH);
   if (packetSize) {
-    Serial.printf("\n[WE GOT A PACKET!] Size: %d bytes, RSSI: %d dBm, SNR: %.1f dB\n",
-                  packetSize, LoRa.packetRssi(), LoRa.packetSnr());
+    Serial.printf(
+        "\n[WE GOT A PACKET!] Size: %d bytes, RSSI: %d dBm, SNR: %.1f dB\n",
+        packetSize, LoRa.packetRssi(), LoRa.packetSnr());
 
     // Read all bytes into a raw buffer
     uint8_t buffer[256];
@@ -99,9 +101,8 @@ void loop() {
 
         digitalWrite(LED_PIN, LOW);
       } else {
-        Serial.printf(
-            "   [NOTE] Header byte is 0x%02X (expected 0x%02X)\n",
-            packet.header, TELEMETRY_PACKET_HEADER);
+        Serial.printf("   [NOTE] Header byte is 0x%02X (expected 0x%02X)\n",
+                      packet.header, TELEMETRY_PACKET_HEADER);
       }
     }
   }

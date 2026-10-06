@@ -1,12 +1,11 @@
 # ESP32 Ground Station Firmware
 
 Firmware for the ESP32-based Ground Station receiver and [inAIR9B Lora radio](https://modtronix.com/product/inair9b/).
+Refer to the `makefile` for build commands.
 
 ---
 
 ## Wiring Guide
-
-Connect the **inAir9B LoRa Module** to your ESP32 as follows:
 
 | inAir9B Pin | ESP32 Pin | Description |
 | :--- | :--- | :--- |
@@ -24,8 +23,7 @@ Connect the **inAir9B LoRa Module** to your ESP32 as follows:
 
 ## Flashing the ESP32
 
-### 1. Identify Connected Device Port
-Before uploading, plug in your ESP32 via USB and check which port macOS assigned to it:
+**Identify Connected Device Port**
 
 ```bash
 pio device list

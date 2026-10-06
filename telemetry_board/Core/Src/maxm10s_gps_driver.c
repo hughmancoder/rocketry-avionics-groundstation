@@ -40,6 +40,7 @@ volatile uint32_t gps_rx_char_count = 0;
 volatile uint32_t gps_gga_count = 0;
 volatile uint32_t gps_error_count = 0;
 char gps_last_sentence[NMEA_MAX_LENGTH] = {0};
+char gps_last_gga[NMEA_MAX_LENGTH] = {0};
 
 #if (GPS_ACTIVE_TRANSPORT == GPS_TRANSPORT_I2C)
 /* ==============================================================================
@@ -190,6 +191,7 @@ void MAX_M10S_ProcessChar(char c) {
     if (strncmp(nmea_buffer, "$GNGGA", 6) == 0 ||
         strncmp(nmea_buffer, "$GPGGA", 6) == 0) {
       gps_gga_count++;
+      strncpy(gps_last_gga, nmea_buffer, sizeof(gps_last_gga) - 1);
       ParseGNGGA(nmea_buffer);
     }
   }

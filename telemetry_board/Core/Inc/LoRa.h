@@ -15,8 +15,6 @@
 #define SLEEP_MODE 0
 #define STNBY_MODE 1
 #define TRANSMIT_MODE 3
-#define RXCONTIN_MODE 5
-#define RXSINGLE_MODE 6
 
 //------- BANDWIDTH -------//
 #define BW_7_8KHz 0
@@ -45,10 +43,13 @@
 #define SF_12 12
 
 //------ POWER GAIN ------//
-#define POWER_11db 0xF6
-#define POWER_14db 0xF9
-#define POWER_17db 0xFC
-#define POWER_20db 0xFF
+// RegPaConfig values for the PA_BOOST pin (PaSelect = 1):
+// Pout = 17 - (15 - OutputPower) dBm. +20 dBm (RegPaDac high-power mode) is
+// not used: it is limited to 1% duty cycle.
+#define POWER_8db 0xF6
+#define POWER_11db 0xF9
+#define POWER_14db 0xFC
+#define POWER_17db 0xFF
 
 //------- REGISTERS -------//
 #define RegFiFo 0x00
@@ -58,25 +59,18 @@
 #define RegFrLsb 0x08
 #define RegPaConfig 0x09
 #define RegOcp 0x0B
-#define RegLna 0x0C
 #define RegFiFoAddPtr 0x0D
 #define RegFiFoTxBaseAddr 0x0E
-#define RegFiFoRxBaseAddr 0x0F
-#define RegFiFoRxCurrentAddr 0x10
 #define RegIrqFlags 0x12
-#define RegRxNbBytes 0x13
-#define RegPktRssiValue 0x1A
 #define RegModemConfig1 0x1D
 #define RegModemConfig2 0x1E
-#define RegSymbTimeoutL 0x1F
 #define RegPreambleMsb 0x20
 #define RegPreambleLsb 0x21
 #define RegPayloadLength 0x22
 #define RegModemConfig3 0x26
 #define RegSyncWord 0x39
-#define RegDioMapping1 0x40
-#define RegDioMapping2 0x41
 #define RegVersion 0x42
+#define RegPaDac 0x4D
 
 //------ LORA STATUS ------//
 #define LORA_OK 200
@@ -126,13 +120,12 @@ void LoRa_setFrequency(LoRa *_LoRa, int freq);
 void LoRa_setSpreadingFactor(LoRa *_LoRa, int SP);
 void LoRa_setPower(LoRa *_LoRa, uint8_t power);
 void LoRa_setOCP(LoRa *_LoRa, uint8_t current);
-void LoRa_setTOMsb_setCRCon(LoRa *_LoRa);
+void LoRa_setCRCon(LoRa *_LoRa);
+void LoRa_setTxContinuous(LoRa *_LoRa, uint8_t enable);
+void LoRa_startTxContinuous(LoRa *_LoRa, uint8_t *data, uint8_t length);
+void LoRa_stopTxContinuous(LoRa *_LoRa);
 void LoRa_setSyncWord(LoRa *_LoRa, uint8_t syncword);
 uint8_t LoRa_transmit(LoRa *_LoRa, uint8_t *data, uint8_t length,
                       uint16_t timeout);
-void LoRa_startReceiving(LoRa *_LoRa);
-uint8_t LoRa_receive(LoRa *_LoRa, uint8_t *data, uint8_t length);
-void LoRa_receive_IT(LoRa *_LoRa, uint8_t *data, uint8_t length);
-int LoRa_getRSSI(LoRa *_LoRa);
 
 uint16_t LoRa_init(LoRa *_LoRa);

@@ -21,10 +21,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "Can.h"
 #include "LoRa.h"
 #include "maxm10s_gps_driver.h"
+#include "rtt.h"
 #include "stm32l4xx_hal_can.h"
-#include "telemetry_mock.h"
 #include "telemetry_packet.h"
 #include <stdio.h>
 #include <string.h>
@@ -41,8 +42,14 @@
 
 // Set to 1 to enable LoRa transceiver, or 0 to disable
 #define ENABLE_LORA 1
-// Set to 1 to turn board into Rocket Mock Transmitter, or 0 for Ground Station
-#define MODE_MOCK_TRANSMITTER 1
+// 1 = PA current test: LoRa transmits continuously for 2 s, then idles 3 s,
+// so the PA_BOOST supply current (~+90 mA at +17 dBm) shows on a bench meter.
+// Takes priority over CAN_LOOPBACK_TEST. Keep the antenna connected.
+#define PA_CURRENT_TEST 0
+// 1 = send only GPS position + satellite count (LoRaGpsPacket, 10 bytes)
+// instead of the full frame (flight computer CAN packet + GPS, 74 bytes)
+#define GPS_ONLY_TX 0
+#define TX_INTERVAL_MS 1000
 
 #define GPS_FIX_TIMEOUT_MS 5000
 /* USER CODE END PD */
@@ -69,11 +76,9 @@ LoRa myLoRa;
 uint8_t LoRa_stat = 0;
 uint8_t ID = 0;
 
-uint8_t rx_buffer[128];
-uint8_t rx_bytes = 0;
-int rx_rssi = 0;
-
-TelemetryPacket tx_pkt;
+LoRaTelemetryFrame tx_frame;
+static uint32_t frame_num = 0;
+static bool can_any = false;
 #endif
 
 static MAX_M10S_Data_t gps_data;
@@ -130,14 +135,28 @@ int main(void) {
   MX_I2C1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  RTT_Init(); // Console printf output over SWD (see rtt_monitor.sh)
+  setvbuf(stdout, NULL, _IONBF, 0); // Emit printf output immediately
   MX_USART2_UART_Init(); // Console printf output (ST-Link / VCP)
 
   MAX_M10S_Init();
   last_fix_ms = HAL_GetTick();
 
+  if (Telemetry_CAN_Init() == HAL_OK) {
+#if CAN_LOOPBACK_TEST
+    printf("[CAN] LOOPBACK TEST MODE: mock flight computer packets\r\n");
+#endif
+    printf("[CAN] Started: 500 kbit/s, telemetry chunks on IDs 0x%02X-0x%02X\r\n",
+           TELEMETRY_PACKET_HEADER,
+           (unsigned)(TELEMETRY_PACKET_HEADER + TELEMETRY_NUM_CHUNKS - 1));
+  } else {
+    printf("[CAN] Start FAILED (error 0x%08lX) - check transceiver/bus\r\n",
+           (unsigned long)HAL_CAN_GetError(&hcan1));
+  }
+
 #if ENABLE_LORA
   printf("\r\n=========================================\r\n");
-  printf(" Ground Station Telemetry Receiver (LoRa)\r\n");
+  printf(" Rocket Telemetry Transmitter (LoRa)\r\n");
   printf("=========================================\r\n");
 
   myLoRa = newLoRa();
@@ -150,7 +169,7 @@ int main(void) {
   HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, GPIO_PIN_SET);
   HAL_Delay(50);
 
-  // Map DIO0 to PB0 (RX_DONE) based on the schematic
+  // DIO0 is wired to PB0 (unused: TX completion is polled over SPI)
   myLoRa.DIO0_port = RX_Done_GPIO_Port;
   myLoRa.DIO0_pin = RX_Done_Pin;
 
@@ -172,16 +191,14 @@ int main(void) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);
 
     printf("[LoRa] Init SUCCESS. Radio Version ID: 0x%02X\r\n", ID);
-    printf("[LoRa] Configured: Frequency=915 MHz, Power=+17 dBm\r\n");
-
-#if MODE_MOCK_TRANSMITTER
-    printf("[LoRa] Operating Mode: MOCK TRANSMITTER (Sending 5 Hz "
-           "telemetry)...\r\n\r\n");
-#else
-    printf("[LoRa] Operating Mode: GROUND STATION RECEIVER (Listening in "
-           "RXCONTIN_MODE)...\r\n\r\n");
-    // Put LoRa into continuous receive mode for Ground Station telemetry
-    LoRa_gotoMode(&myLoRa, RXCONTIN_MODE);
+    printf("[LoRa] Configured: Frequency=915 MHz, Power=+17 dBm (PA_BOOST)\r\n");
+    printf("[LoRa] Readback: RegPaConfig=0x%02X RegPaDac=0x%02X RegOcp=0x%02X\r\n",
+           LoRa_read(&myLoRa, RegPaConfig), LoRa_read(&myLoRa, RegPaDac),
+           LoRa_read(&myLoRa, RegOcp));
+    printf("[LoRa] Transmit-only: CAN sensor packet + GPS, %u-byte frames\r\n\r\n",
+           (unsigned)sizeof(LoRaTelemetryFrame));
+#if PA_CURRENT_TEST
+    printf("[PA TEST] Continuous TX 2 s ON / 3 s OFF - watch supply current\r\n\r\n");
 #endif
   } else {
     LoRa_stat = 0;
@@ -213,7 +230,7 @@ int main(void) {
       printf("fix=%u sats=%u lat=%.6f lon=%.6f alt=%.1f\r\n",
              gps_data.fix_quality, gps_data.satellites, gps_data.latitude,
              gps_data.longitude, gps_data.altitude);
-      printf("raw: %s\r\n", gps_last_sentence);
+      printf("raw: %s", gps_last_gga);
     } else if (HAL_GetTick() - last_fix_ms > GPS_FIX_TIMEOUT_MS) {
       printf("[GPS] no fix for over %d ms (waiting for satellites)\r\n",
              GPS_FIX_TIMEOUT_MS);
@@ -222,68 +239,96 @@ int main(void) {
 
 #if ENABLE_LORA
     if (LoRa_stat == 1) {
-#if MODE_MOCK_TRANSMITTER
-      // Generate mock sensor packet
-      Telemetry_GenerateMockPacket(&tx_pkt);
+#if PA_CURRENT_TEST
+      static uint8_t pa_test_payload[] = "PA_BOOST current test";
+      printf("[PA TEST] TX ON  (continuous, +17 dBm PA_BOOST) for 2 s\r\n");
+      LoRa_startTxContinuous(&myLoRa, pa_test_payload,
+                             sizeof(pa_test_payload) - 1);
+      HAL_Delay(2000);
+      LoRa_stopTxContinuous(&myLoRa);
+      printf("[PA TEST] TX OFF (standby) for 3 s | OpMode=0x%02X\r\n",
+             LoRa_read(&myLoRa, RegOpMode));
+      HAL_Delay(3000);
+#elif GPS_ONLY_TX
+      static uint32_t last_gps_tx_ms = 0;
+      if (HAL_GetTick() - last_gps_tx_ms < TX_INTERVAL_MS) {
+        HAL_Delay(10); // keep polling the GPS between transmissions
+        continue;
+      }
+      last_gps_tx_ms = HAL_GetTick();
 
-      // Transmit telemetry struct over LoRa radio
-      uint8_t tx_status =
-          LoRa_transmit(&myLoRa, (uint8_t *)&tx_pkt, sizeof(tx_pkt), 1000);
+      LoRaGpsPacket gps_pkt = {.header = LORA_GPS_HEADER,
+                               .sats = gps_data.satellites};
+      if (gps_data.fix_quality > 0) {
+        gps_pkt.lat_e7 = (int32_t)((double)gps_data.latitude * 1e7);
+        gps_pkt.lon_e7 = (int32_t)((double)gps_data.longitude * 1e7);
+      }
+
+      if (LoRa_transmit(&myLoRa, (uint8_t *)&gps_pkt, sizeof(gps_pkt), 1000) ==
+          1) {
+        printf("[TX] GPS sats=%u lat=%.6f lon=%.6f%s\r\n", gps_pkt.sats,
+               gps_pkt.lat_e7 / 1e7, gps_pkt.lon_e7 / 1e7,
+               gps_data.fix_quality > 0 ? "" : " (no fix)");
+      } else {
+        printf("[TX ERROR] OpMode=0x%02X IrqFlags=0x%02X\r\n",
+               LoRa_read(&myLoRa, RegOpMode), LoRa_read(&myLoRa, RegIrqFlags));
+      }
+#else
+      static uint32_t last_tx_ms = 0;
+      if (HAL_GetTick() - last_tx_ms < TX_INTERVAL_MS) {
+        HAL_Delay(10); // keep polling the GPS between transmissions
+        continue;
+      }
+      last_tx_ms = HAL_GetTick();
+
+#if CAN_LOOPBACK_TEST
+      // Stand-in for the flight computer: the packet loops back through the
+      // real CAN RX interrupt and reassembly within a millisecond
+      Telemetry_CAN_SendMockPacket();
+      HAL_Delay(2);
+#endif
+
+      // Latest sensor packet from CAN (zeros until the first one arrives)
+      bool can_new = Telemetry_CAN_GetLatest(&tx_frame.sensors);
+      can_any |= can_new;
+
+      tx_frame.header = LORA_FRAME_HEADER;
+      tx_frame.frame_num = ++frame_num;
+      tx_frame.timestamp_ms = HAL_GetTick();
+      tx_frame.flags = (can_new ? LORA_FLAG_CAN_NEW : 0) |
+                       (can_any ? LORA_FLAG_CAN_ANY : 0) |
+                       (gps_data.fix_quality > 0 ? LORA_FLAG_GPS_FIX : 0);
+      tx_frame.gps_fix = gps_data.fix_quality;
+      tx_frame.gps_sats = gps_data.satellites;
+      if (gps_data.fix_quality > 0) {
+        tx_frame.gps_lat = gps_data.latitude;
+        tx_frame.gps_lon = gps_data.longitude;
+        tx_frame.gps_alt_m = gps_data.altitude;
+      } else {
+        tx_frame.gps_lat = 0.0f;
+        tx_frame.gps_lon = 0.0f;
+        tx_frame.gps_alt_m = 0.0f;
+      }
+
+      uint8_t tx_status = LoRa_transmit(&myLoRa, (uint8_t *)&tx_frame,
+                                        sizeof(tx_frame), 1000);
 
       if (tx_status == 1) {
-        printf("[TX] Packet #%lu Sent | Alt: %.1f m | Temp: %.2f C | AccZ: "
-               "%.2fg\r\n",
-               (unsigned long)tx_pkt.packet_num, tx_pkt.altitude_m,
-               tx_pkt.temperature_C, tx_pkt.imu_accel[2]);
+        printf("[TX] Frame #%lu | FC: %s #%lu (pkts=%lu drops=%lu) | GPS: "
+               "sats=%u fix=%u\r\n",
+               (unsigned long)tx_frame.frame_num,
+               can_new ? "new" : (can_any ? "stale" : "none"),
+               (unsigned long)tx_frame.sensors.packet_num,
+               (unsigned long)can_packet_count, (unsigned long)can_drop_count,
+               tx_frame.gps_sats, tx_frame.gps_fix);
       } else {
         uint8_t opMode = LoRa_read(&myLoRa, RegOpMode);
         uint8_t irqFlags = LoRa_read(&myLoRa, RegIrqFlags);
         uint8_t ver = LoRa_read(&myLoRa, RegVersion);
-        printf("[TX ERROR] Failed! OpMode=0x%02X | IrqFlags=0x%02X | "
-               "Ver=0x%02X\r\n",
+        printf("[TX ERROR] Failed! OpMode=0x%02X | IrqFlags=0x%02X | Ver=0x%02X\r\n",
                opMode, irqFlags, ver);
       }
 
-      HAL_Delay(200); // Send at 5 Hz (every 200 ms)
-#else
-      // Poll for incoming rocket telemetry packets
-      rx_bytes = LoRa_receive(&myLoRa, rx_buffer, sizeof(rx_buffer));
-      if (rx_bytes > sizeof(rx_buffer)) {
-        rx_bytes = sizeof(rx_buffer);
-      }
-      if (rx_bytes > 0) {
-        // Get RSSI of the received telemetry packet
-        rx_rssi = LoRa_getRSSI(&myLoRa);
-
-        // Deserialization: Check if packet matches structured TelemetryPacket
-        if (rx_bytes == sizeof(TelemetryPacket) &&
-            rx_buffer[0] == TELEMETRY_PACKET_HEADER) {
-          TelemetryPacket pkt;
-          memcpy(&pkt, rx_buffer, sizeof(TelemetryPacket));
-
-          printf("---------------------------------------------------\r\n");
-          printf("[RX TELEMETRY] Pkt #%lu | Time: %lu ms | RSSI: %d dBm\r\n",
-                 (unsigned long)pkt.packet_num, (unsigned long)pkt.timestamp_ms,
-                 rx_rssi);
-          printf("   Altitude: %.1f m  | Temp: %.2f C\r\n", pkt.altitude_m,
-                 pkt.temperature_C);
-          printf("   ACC  (g) : X=%+.2f  Y=%+.2f  Z=%+.2f\r\n",
-                 pkt.imu_accel[0], pkt.imu_accel[1], pkt.imu_accel[2]);
-          printf("   GYRO(d/s): X=%+.2f  Y=%+.2f  Z=%+.2f\r\n", pkt.imu_gyro[0],
-                 pkt.imu_gyro[1], pkt.imu_gyro[2]);
-          printf("---------------------------------------------------\r\n\r\n");
-        } else {
-          // Raw packet fallback (HEX / Text string format)
-          printf("[RX RAW] Received %d bytes | RSSI: %d dBm\r\n", rx_bytes,
-                 rx_rssi);
-          printf("   HEX: ");
-          for (int i = 0; i < rx_bytes; i++) {
-            printf("%02X ", rx_buffer[i]);
-          }
-          printf("\r\n   TXT: %.*s\r\n\r\n", rx_bytes, rx_buffer);
-        }
-      }
-      HAL_Delay(10);
 #endif
     } else {
       // Radio not initialized: wait gracefully without hammering the SPI bus
@@ -531,8 +576,7 @@ static void MX_GPIO_Init(void) {
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   // PB0 (DIO0/RX_Done) and PB1 (DIO1/RX_Timeout) are outputs from the SX1276.
-  // Reconfigure them as inputs so the MCU doesn't drive GND into the SX1276
-  // output pins.
+  // Reconfigure them as inputs so the MCU doesn't drive GND into the SX1276 output pins.
   GPIO_InitStruct.Pin = RX_Done_Pin | RX_Timeout_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -542,6 +586,7 @@ static void MX_GPIO_Init(void) {
 
 /* USER CODE BEGIN 4 */
 int _write(int file, char *ptr, int len) {
+  RTT_Write(ptr, len);
   HAL_UART_Transmit(&huart2, (uint8_t *)ptr, len, HAL_MAX_DELAY);
   return len;
 }

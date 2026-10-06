@@ -1,6 +1,6 @@
 # Simple Makefile wrapper for PlatformIO commands
 
-.PHONY: all build upload clean monitor
+.PHONY: all build upload clean monitor rtt
 
 all: build
 
@@ -15,3 +15,6 @@ clean:
 
 monitor:
 	pio device monitor
+
+rtt:
+	./rtt_monitor.sh

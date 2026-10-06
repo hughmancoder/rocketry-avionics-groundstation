@@ -204,4 +204,11 @@ void USART1_IRQHandler(void)
 {
   HAL_UART_IRQHandler(&huart1);
 }
+
+extern CAN_HandleTypeDef hcan1;
+
+void CAN1_RX0_IRQHandler(void)
+{
+  HAL_CAN_IRQHandler(&hcan1);
+}
 /* USER CODE END 1 */

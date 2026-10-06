@@ -26,8 +26,8 @@
 
 // Select active transport here:
 #ifndef GPS_ACTIVE_TRANSPORT
-// #define GPS_ACTIVE_TRANSPORT GPS_TRANSPORT_I2C
-#define GPS_ACTIVE_TRANSPORT GPS_TRANSPORT_UART
+#define GPS_ACTIVE_TRANSPORT GPS_TRANSPORT_I2C
+// #define GPS_ACTIVE_TRANSPORT GPS_TRANSPORT_UART
 #endif
 
 // GPS Data Structure
@@ -51,5 +51,6 @@ extern volatile uint32_t gps_rx_char_count;
 extern volatile uint32_t gps_gga_count;
 extern volatile uint32_t gps_error_count;
 extern char gps_last_sentence[128];
+extern char gps_last_gga[128];
 
 #endif // MAXM10S_GPS_DRIVER_H
