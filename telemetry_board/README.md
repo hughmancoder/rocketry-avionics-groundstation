@@ -43,15 +43,15 @@ Toggle between Rocket Transmitter and Ground Station Receiver in [`Core/Src/main
 ```
 
 * **Transmitter (`1`)**: Sends simulated IMU, temperature, and altitude packets (`TelemetryPacket`) over LoRa.
-* **Receiver (`0`)**: Runs in continuous receive mode (`RXCONTIN_MODE`), deserializes incoming telemetry packets, and prints parsed values over UART 
+* **Receiver (`0`)**: Runs in continuous receive mode (`RXCONTIN_MODE`), deserialises incoming telemetry packets, and prints parsed values over UART 
 
-## Known Schamtic Issues
+## Known Schematic Issues
 
 **LoRa Transceiver**
 
 The `SX1276IMLTRT` chip is fully capable of both transmitting and receiving.
 
-Reciving RFI_LF and RFI_HF ports are left unconnected, meaning incoming RF signals have no physical path into the chip's receiver. Therefore the board is not capable of receive?
+Receiving RFI_LF and RFI_HF ports are left unconnected, meaning incoming RF signals have no physical path into the chip's receiver. Therefore the board is not capable of receiving?
 
 **GPS ports**
 
